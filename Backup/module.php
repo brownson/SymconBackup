@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+// This should fix bugs with SFTP invalid responses
+// -> UnexpectedValueException: Expected xxx. Got packet type:
+define('NET_SFTP_QUEUE_SIZE', 1);
+
 include_once __DIR__ . '/../libs/vendor/autoload.php';
 include_once __DIR__ . '/../libs/FTP.php';
 include_once __DIR__ . '/../libs/FTPS.php';
