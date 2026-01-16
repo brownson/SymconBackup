@@ -153,6 +153,10 @@ class FTP
         if ($result === false) {
             throw new Exception(error_get_last()['message']);
         }
+        $result = @ftp_pasv($this->connection, true);
+        if ($result === false) {
+            throw new Exception('ftp_pasv Error!');
+        }
         return $result;
     }
 
