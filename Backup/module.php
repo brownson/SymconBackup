@@ -42,6 +42,8 @@ class Backup extends IPSModule
         }
         $this->RegisterVariableInteger('LastFinishedBackup', $this->Translate('Last Finished Backup'), '~UnixTimestamp', 0);
         $this->RegisterVariableFloat('TransferredMegabytes', $this->Translate('Transferred Megabytes'), 'Megabytes.Backup', 0);
+        $this->RegisterVariableString('LastError',            $this->Translate('Last Error'), '~TextBox', 0);
+        $this->RegisterVariableString('LastStep',             $this->Translate('Last Step'), '~TextBox', 0);
 
         $this->RegisterTimer('UpdateBackup', 0, 'IPS_RunScriptText(\'SB_CreateBackup(' . $_IPS['TARGET'] . ');\');');
     }
@@ -88,6 +90,9 @@ class Backup extends IPSModule
     public function CreateBackup()
     {
         if (IPS_SemaphoreEnter('CreateBackup', 1000)) {
+            $this->SetValue('LastStep', 'Start Backup');
+            $this->SetValue('LastError', '');
+
             // Directly schedule a new backup slot in case of a failure
             $this->setNewTimer();
 
@@ -126,6 +131,7 @@ class Backup extends IPSModule
             $this->UpdateFormField('Progress', 'caption', $dir);
 
             // Set the remote dir
+            $this->SetValue('LastStep', 'Create Remote Directory');
             $mode = $this->ReadPropertyString('Mode');
             if ($mode == 'FullBackup') {
                 $backupName = 'symcon-backup-' . date('Y-m-d-H-i-s');
@@ -168,6 +174,7 @@ class Backup extends IPSModule
             }
 
             //Get the total number of the files to copy
+            $this->SetValue('LastStep', 'Count Number of Files');
             $totalFiles = 0;
             switch ($mode) {
                 case 'IncrementalBackup':
@@ -185,6 +192,7 @@ class Backup extends IPSModule
             $this->UpdateFormField('Progress', 'maximum', $totalFiles);
 
             //Go recursively through the directories and files and copy from local to remote
+            $this->SetValue('LastStep', 'Start Backup CountFiles='.$totalFiles);
             $transferred = 0;
             $passedFiles = 0;
             if (!$this->copyLocalToRemote(
@@ -202,7 +210,8 @@ class Backup extends IPSModule
             }
 
             if ($mode == 'IncrementalBackup') {
-                //Compare the local files to the remote ones and delete remote files if it hasn't a local file
+                $this->SetValue('LastStep', 'Start Compare Remote to Local');
+                 //Compare the local files to the remote ones and delete remote files if it hasn't a local file
                 if (!$this->compareFilesRemoteToLocal($connection->pwd(), $connection, '', $passedFiles)) {
                     $connection->disconnect();
                     IPS_SemaphoreLeave('CreateBackup');
@@ -216,6 +225,7 @@ class Backup extends IPSModule
             $this->UpdateFormField('InformationLabel', 'caption', $this->Translate('Backup is finished'));
 
             $this->SetValue('LastFinishedBackup', time());
+            $this->SetValue('LastStep', 'Finished Backup');
 
             IPS_SemaphoreLeave('CreateBackup');
         } else {
@@ -437,8 +447,10 @@ class Backup extends IPSModule
                             $passedFiles++;
                             $this->UpdateFormField('Progress', 'current', $passedFiles);
                         } catch (\Throwable $th) {
+                            $this->SetValue('LastError', $th->getMessage());
                             $this->UpdateFormField('InformationLabel', 'caption', $th->getMessage());
                             $this->UpdateFormField('Progress', 'visible', false);
+ 
                             return false;
                         }
                         break;
@@ -450,9 +462,10 @@ class Backup extends IPSModule
                                 $passedFiles++;
                                 $this->UpdateFormField('Progress', 'current', $passedFiles);
                             } catch (\Throwable $th) {
+                                $this->SetValue('LastError', $th->getMessage());
                                 $this->UpdateFormField('InformationLabel', 'caption', $th->getMessage());
                                 $this->UpdateFormField('Progress', 'visible', false);
-                                return false;
+                                 return false;
                             }
                         } else {
                             if (filemtime($dir . '/' . $file) > $connection->filemtime($file)) {
@@ -462,6 +475,7 @@ class Backup extends IPSModule
                                     $passedFiles++;
                                     $this->UpdateFormField('Progress', 'current', $passedFiles);
                                 } catch (\Throwable $th) {
+                                    $this->SetValue('LastError', $th->getMessage());
                                     $this->UpdateFormField('InformationLabel', 'caption', $th->getMessage());
                                     $this->UpdateFormField('Progress', 'visible', false);
                                     return false;
